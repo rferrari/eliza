@@ -192,4 +192,52 @@ CREATE INDEX idx_knowledge_created ON knowledge("agentId", "createdAt");
 CREATE INDEX idx_knowledge_shared ON knowledge("isShared");
 CREATE INDEX idx_knowledge_embedding ON knowledge USING ivfflat (embedding vector_cosine_ops);
 
+-- Create Functions
+CREATE OR REPLACE FUNCTION public.create_room("roomId" UUID DEFAULT NULL)
+RETURNS UUID
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    new_room_id UUID;
+BEGIN
+    IF "roomId" IS NULL THEN
+        new_room_id := gen_random_uuid();  -- Generate a new UUID if roomId is not provided
+    ELSE
+        new_room_id := "roomId";  -- Use the provided roomId
+    END IF;
+
+    INSERT INTO rooms (id) VALUES (new_room_id);  -- Insert the new room into the rooms table
+    RETURN new_room_id;  -- Return the new room ID
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION insert_into_memories()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Check the size of the embedding vector
+    IF array_length(NEW.embedding, 1) = 1536 THEN
+        INSERT INTO memories_1536 ("id", "type", "createdAt", "content", "embedding", "userId", "agentId", "roomId", "unique")
+        VALUES (NEW."id", NEW."type", NEW."createdAt", NEW."content", NEW."embedding", NEW."userId", NEW."agentId", NEW."roomId", NEW."unique");
+    ELSIF array_length(NEW.embedding, 1) = 1024 THEN
+        INSERT INTO memories_1024 ("id", "type", "createdAt", "content", "embedding", "userId", "agentId", "roomId", "unique")
+        VALUES (NEW."id", NEW."type", NEW."createdAt", NEW."content", NEW."embedding", NEW."userId", NEW."agentId", NEW."roomId", NEW."unique");
+    ELSIF array_length(NEW.embedding, 1) = 768 THEN
+        INSERT INTO memories_768 ("id", "type", "createdAt", "content", "embedding", "userId", "agentId", "roomId", "unique")
+        VALUES (NEW."id", NEW."type", NEW."createdAt", NEW."content", NEW."embedding", NEW."userId", NEW."agentId", NEW."roomId", NEW."unique");
+    ELSIF array_length(NEW.embedding, 1) = 384 THEN
+        INSERT INTO memories_384 ("id", "type", "createdAt", "content", "embedding", "userId", "agentId", "roomId", "unique")
+        VALUES (NEW."id", NEW."type", NEW."createdAt", NEW."content", NEW."embedding", NEW."userId", NEW."agentId", NEW."roomId", NEW."unique");
+    ELSE
+        RAISE EXCEPTION 'Invalid embedding size: %', array_length(NEW.embedding, 1);
+    END IF;
+
+    RETURN NEW;  -- Return the new row
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER memories_insert_trigger
+INSTEAD OF INSERT ON memories
+FOR EACH ROW
+EXECUTE FUNCTION insert_into_memories();
+
 COMMIT;
